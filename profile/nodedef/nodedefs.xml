@@ -8,7 +8,10 @@
       <st id="GV2" editor="ACN_LOWBAT" />
       <st id="BATLVL" editor="ACN_BATLVL" />    </sts>
     <cmds>
-      <sends />
+      <sends>
+        <cmd id="DON" />
+        <cmd id="DOF" />
+      </sends>
       <accepts>
         <cmd id="QUERY" />
         <cmd id="UPDATE_PROFILE" />

@@ -172,7 +172,9 @@ class Controller(polyinterface.Controller):
 
     def __init__(self, poly):
         super(Controller, self).__init__(poly)
+        self.started = False
         self.name = "controller"
+        self._logger = _LOGGER
         self.autelis = None
         self.pollingInterval = 60
         self.ignoresolar = False
@@ -181,7 +183,7 @@ class Controller(polyinterface.Controller):
         self.threadMonitor = None
         self.update = True
         self.autelis = None
-
+        self.hb = 0
 
     # Setup node_def_id and drivers for temp unit
     def set_temp_unit(self, tempUnit):
@@ -240,19 +242,21 @@ class Controller(polyinterface.Controller):
 
         # setup a thread for the api in case it times out we don't start it here.
         # Needed for threads
-        self._logger = _LOGGER
         self._logger.info("Starting Autelis api thread...")
-        self.threadAPI = threading.Thread(target=self._api_thread)
+        self.threadAPI = threading.Thread(target=self._api_start)
         self.threadAPI.daemon = True
         self.threadAPI.start()
-        self._logger.info("Autelis api thread is_alive={}".format(self.threadAPI.is_alive()))
+        self._logger.info("start: Autelis api thread is_alive={}".format(self.threadAPI.is_alive()))
+        self.started = True
 
-    def _api_thread(self):
+    def _api_start(self):
         # create a object for the autelis interface
         self._logger.info("Starting Autelis api...")
         try:
+            self.autelis = False # This means we are trying
             self.autelis = autelisapi.AutelisInterface(self.ip, self.username, self.password, _LOGGER)
         except (Exception) as err:
+            self.autelis = None # We tried and failed
             self._logger.error('Unknown error starting api: {}'.format(err), exc_info=True)
             raise
         self._logger.info("Started Autelis api {}".format(self.autelis))
@@ -269,16 +273,41 @@ class Controller(polyinterface.Controller):
     # called every long_poll seconds
     def longPoll(self):
 
-        # check the monitor thread to see if it is still running
-        if self.threadMonitor and not self.threadMonitor.is_alive():
-            _LOGGER.warning("Status monitoring thread has terminated - restarting.")
-            self._monitor_thread()
+        # if node server is not setup yet, return
+        if self.started is False:
+            return
+
+        self.heartbeat()
+
+        # Make sure api is running
+        if self.autelis is None:
+            self._api_start()
+        elif self.autelis is False:
+            _LOGGER.warning("longPoll: API seems to be stil trying to startup?")
+        else:
+            # check the monitor thread to see if it is still running
+            if self.threadMonitor and not self.threadMonitor.is_alive():
+                _LOGGER.warning("Status monitoring thread has terminated - restarting.")
+                self._monitor_thread()
+
+    def heartbeat(self):
+        _LOGGER.debug('heartbeat hb={}'.format(self.hb))
+        if self.hb == 0:
+            self.reportCmd("DON",2)
+            self.hb = 1
+        else:
+            self.reportCmd("DOF",2)
+            self.hb = 0
 
     # called every short_poll seconds
     def shortPoll(self):
 
         # if node server is not setup yet, return
-        if self.autelis is None:
+        if self.started is False:
+            return
+
+        if self.autelis is None or self.autelis is False:
+            _LOGGER.warning("shortPoll: API seems to be stil trying to startup?")
             return
 
         currentTime = time.time()
