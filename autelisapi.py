@@ -32,6 +32,8 @@ class AutelisInterface(object):
         self.controllerAddr = controllerAddr
         self._userName = userName
         self._password = password
+        # Create the requests session.
+        self.session = requests.Session()
 
         # setup basic console logger for debugging
         if logger is None:
@@ -39,6 +41,7 @@ class AutelisInterface(object):
             self._logger = logging.getLogger() # Root logger
         else:
             self._logger = logger
+        self._logger.debug("api init done")
 
     # Gets the status XML from the Pool Controller
     def get_status(self):
@@ -46,7 +49,7 @@ class AutelisInterface(object):
         self._logger.debug("In get_status()...")
 
         try:
-            response = requests.get(
+            response = self.session.get(
                 "http://{host_addr}/{device_list_endpoint}".format(
                     host_addr=self.controllerAddr,
                     device_list_endpoint=_STATUS_ENDPOINT
@@ -60,8 +63,15 @@ class AutelisInterface(object):
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
             self._logger.warning("HTTP GET in get_status() failed - %s", str(e))
             return None
-        except:
-            self._logger.error("Unexpected error occured - %s", sys.exc_info()[0])
+
+	# This is supposed to catch all request excpetions.
+        except requests.exceptions.RequestException as e:
+            self._logger.error("Connection error in get_status: %s" % (e))
+            return None
+
+        # Everything else
+        except (Exception) as err:
+            self._logger.error('Unknown error in get_status: {1}'.format(err), exc_info=True)
             raise
 
         statusXML = xml.fromstring(response.text)
@@ -94,9 +104,17 @@ class AutelisInterface(object):
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.HTTPError) as e:
             self._logger.warning("HTTP GET in send_command() failed - %s", str(e))
             return False
-        except:
-            self._logger.error("Unexpected error occured - %s", sys.exc_info()[0])
+
+	# This is supposed to catch all request excpetions.
+        except requests.exceptions.RequestException as e:
+            self._logger.error("Connection error in send_command: %s" % (e))
+            return None
+
+        # Everything else
+        except (Exception) as err:
+            self._logger.error('Unknown error in send_command: {1}'.format(err), exc_info=True)
             raise
+
         else:
             self._logger.debug("GET returned successfully - %s", response.text)
             return True
@@ -126,10 +144,13 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
 
     # Open a socket for communication with the Pool Controller
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.settimeout(3)
     try:
+        logger.debug("status_listener: Connecting to '{}:{}'".format(controllerAddr, _CONTROLLER_TCP_PORT))
         conn.connect((controllerAddr, _CONTROLLER_TCP_PORT))
+        logger.debug("status_listener: connection establised")
     except (socket.error, socket.herror, socket.gaierror) as e:
-        logger.error("Unable to establish TCP connection with Pool Controller. Socket error: %s", str(e))
+        logger.error("status_listener: Unable to establish TCP connection with Pool Controller. Socket error: %s", str(e))
         conn.close()
         return False
     except:
@@ -152,11 +173,11 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
                 conn.send(_TEST_TCP_MSG)
                 msg = conn.recv(_BUFFER_SIZE)
             except socket.timeout:
-                logger.error("Pool Controller did not respond to test message - connection closed.")
+                logger.error("status_listener: Pool Controller did not respond to test message - connection closed.")
                 conn.close()
                 return False
             except socket.error as e:
-                logger.error("TCP Connection to Pool Controller unexpectedly closed. Socket error: %s", str(e))
+                logger.error("status_listener: TCP Connection to Pool Controller unexpectedly closed. Socket error: %s", str(e))
                 conn.close()
                 return False
             except:
@@ -165,12 +186,12 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
 
             # check returned data for success
             if not _TEST_RTN_SUCCESS in msg:
-                logger.error("Pool Controller returned invalid data ('%s') - connection closed.", msg.decode("utf-8"))
+                logger.error("status_listener: Pool Controller returned invalid data ('%s') - connection closed.", msg.decode("utf-8"))
                 conn.close()
                 return False
 
         except socket.error as e:
-            logger.error("TCP Connection to Pool Controller unexpectedly closed. Socket error: %s", str(e))
+            logger.error("status_listener: TCP Connection to Pool Controller unexpectedly closed. Socket error: %s", str(e))
             conn.close()
             return False
         except:
@@ -188,15 +209,15 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
                 cmd = matches.groups()[0]
                 val = matches.groups()[1]
 
-                logger.debug("Status update message received from Pool Controller: Command %s, Value %s", cmd, val)
+                logger.debug("status_listener: Message received from Pool Controller: Command %s, Value %s", cmd, val)
 
                 # call status update callback function
                 if not statusUpdateCallback is None:
                     if not statusUpdateCallback(cmd_to_element(cmd), val_to_text(val)):
-                        logger.warning("Unhandled status update from Pool Controller - %s", cmd)
+                        logger.warning("status_listener: Unhandled status update from Pool Controller - %s", cmd)
 
             else:
-                logger.warning("Invalid status message received from Pool Controller - %s", msg.decode("utf-8"))
+                logger.warning("status_listener: Invalid status message received from Pool Controller - %s", msg.decode("utf-8"))
 
 # Convert the TCP Serial Port Interface command words to
 # element tags matching the HTTP Command Interface
