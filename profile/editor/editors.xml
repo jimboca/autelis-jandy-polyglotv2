@@ -1,7 +1,7 @@
 <editors>
   <!-- ISY Bool UOM -->
   <editor id="ACN_BOOL">
-    <range uom="2" subset="0,1" />
+    <range uom="2" subset="0,1" nls="IX_ACN_BOOL"/>
   </editor>
   <!-- ISY Index UOM with custom labels in NLS -->
   <editor id="ACN_RUNSTATE">
@@ -25,11 +25,11 @@
   </editor>
   <!-- ISY Farenheit UOM -->
   <editor id="ATC_F_TEMP">
-    <range uom="17" prec="0" />
+    <range uom="17" min="-50" max="150" prec="0" />
   </editor>
   <!-- ISY Celcius UOM -->
   <editor id="ATC_C_TEMP">
-    <range uom="4" prec="0" />
+    <range uom="4" min="-50" max="150" prec="0" />
   </editor>
   <!-- ISY Farenheit UOM with Jandy/Zodiac Aqualink limits for setpoints-->
   <editor id="ATC_F_SETPOINT">

@@ -1,8 +1,9 @@
 ND-CONTROLLER-NAME = Pool Controller
 ND-CONTROLLER-ICON = GenericCtl
+CMD-ACN-UPDATE_PROFILE-NAME = Update Profile
 ST-ACN-ST-NAME = NodeServer Online
 ST-ACN-GV0-NAME = Interface State
-IX_ACN_RUNSTATE-0 = Autelis Device Not Responding
+IX_ACN_RUNSTATE-0 = Not Responding
 IX_ACN_RUNSTATE-1 = Not Connected
 IX_ACN_RUNSTATE-2 = Startup Seq. (2)
 IX_ACN_RUNSTATE-3 = Startup Seq. (3)
@@ -16,6 +17,8 @@ IX_ACN_RUNSTATE-10 = Busy (10)
 IX_ACN_RUNSTATE-11 = Busy (11)
 IX_ACN_RUNSTATE-12 = Busy (12)
 ST-ACN-GV1-NAME = Operating Mode
+IX_ACN_BOOL-0 = True
+IX_ACN_BOOL-1 = False
 IX_ACN_OPMODE-0 = Auto
 IX_ACN_OPMODE-1 = Service
 IX_ACN_OPMODE-2 = Timeout
@@ -42,4 +45,3 @@ CMD-ATC-DON-NAME = Enable
 CMD-ATC-DOF-NAME = Disable
 CMD-ATC-SET_MODE-NAME = Mode
 CMD-ATC-SET_SPH-NAME = Setpoint
-
