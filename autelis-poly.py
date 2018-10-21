@@ -59,17 +59,17 @@ class TempControl(polyinterface.Node):
     def __init__(self, controller, primary, address, name, tempUnit):
         self.set_temp_unit(tempUnit)
         super(TempControl, self).__init__(controller, primary, address, name)
-        
+
 
     # Setup node_def_id and drivers for tempUnit
     def set_temp_unit(self, tempUnit):
-        
+
         # set the id of the node for the ISY to use from the nodedef
         if tempUnit == "C":
             self.id = "TEMP_CONTROL_C"
         else:
             self.id = "TEMP_CONTROL"
-            
+
         # update the drivers in the node
         for driver in self.drivers:
             if driver["driver"] in ("ST", "CLISPH", "CLISPC"):
@@ -91,7 +91,7 @@ class TempControl(polyinterface.Node):
 
     # Set set point temperature - TCP connection monitoring will pick up status change
     def cmd_set_temp(self, command):
-        
+
         value = int(command.get("value"))
 
         # determine setpoint element to change based on the node address
@@ -113,7 +113,7 @@ class TempControl(polyinterface.Node):
 
     # Set set point temperature - TCP connection monitoring will pick up status change
     def cmd_set_mode(self, command):
-        
+
         value = int(command.get("value"))
 
         # determine model element to change based on the node address
@@ -179,10 +179,13 @@ class Controller(polyinterface.Controller):
         self.lastPoll = 0
         self.currentTempUnit = "F"
         self.threadMonitor = None
+        self.update = True
+        self.autelis = None
+
 
     # Setup node_def_id and drivers for temp unit
     def set_temp_unit(self, tempUnit):
-        
+
         # Update the drivers to the new temp unit
         for driver in self.drivers:
             if driver["driver"] == "CLITEMP":
@@ -192,31 +195,31 @@ class Controller(polyinterface.Controller):
         self.updateNode(self)
 
         self.currentTempUnit = tempUnit
-       
+
     # change the temp units utilized by the nodeserver
     def change_temp_units(self, newTempUnit):
-         
+
         # update the temp unit for the temp control nodes
         for addr in self.nodes:
             node = self.nodes[addr]
             if node.id in ("TEMP_CONTROL", "TEMP_CONTROL_C"):
-               node.set_temp_unit(newTempUnit) 
+               node.set_temp_unit(newTempUnit)
                self.updateNode(node) # Calls ISY REST change command to change node_def_id
-        
+
         # update the temp unit for the controller node
         self.set_temp_unit(newTempUnit)
-        
+
     # Start the nodeserver
     def start(self):
 
-        _LOGGER.info("Started Autelis Nodeserver...")
+        _LOGGER.info("Starting Autelis Nodeserver...")
 
         # get controller information from custom parameters
         try:
             customParams = self.poly.config["customParams"]
-            ip = customParams["ipaddress"]
-            username = customParams["username"]
-            password = customParams["password"]
+            self.ip = customParams["ipaddress"]
+            self.username = customParams["username"]
+            self.password = customParams["password"]
         except KeyError:
             _LOGGER.error("Missing controller settings in configuration.")
             raise
@@ -231,14 +234,35 @@ class Controller(polyinterface.Controller):
         except (KeyError, ValueError):
             self.ignoresolar = False
 
-        # create a object for the autelis interface
-        self.autelis = autelisapi.AutelisInterface(ip, username, password, _LOGGER)
+        if self.update is True:
+            self.update_profile(None) # Always upload for now
+            self.update = False
 
+        # setup a thread for the api in case it times out we don't start it here.
+        # Needed for threads
+        self._logger = _LOGGER
+        self._logger.info("Starting Autelis api thread...")
+        self.threadAPI = threading.Thread(target=self._api_thread)
+        self.threadAPI.daemon = True
+        self.threadAPI.start()
+        self._logger.info("Autelis api thread is_alive={}".format(self.threadAPI.is_alive()))
+
+    def _api_thread(self):
+        # create a object for the autelis interface
+        self._logger.info("Starting Autelis api...")
+        try:
+            self.autelis = autelisapi.AutelisInterface(self.ip, self.username, self.password, _LOGGER)
+        except (Exception) as err:
+            self._logger.error('Unknown error starting api: {}'.format(err), exc_info=True)
+            raise
+        self._logger.info("Started Autelis api {}".format(self.autelis))
         #  setup the nodes from the autelis pool controller
-        self.discover_nodes() 
-    
+        self.discover_nodes()
+        self._monitor_thread()
+
+    def _monitor_thread(self):
         # setup a thread for monitoring status updates from the Pool Controller
-        self.threadMonitor = threading.Thread(target=autelisapi.status_listener, args=(ip, self.set_node_state, _LOGGER))
+        self.threadMonitor = threading.Thread(target=autelisapi.status_listener, args=(self.ip, self.set_node_state, _LOGGER))
         self.threadMonitor.daemon = True
         self.threadMonitor.start()
 
@@ -247,13 +271,8 @@ class Controller(polyinterface.Controller):
 
         # check the monitor thread to see if it is still running
         if self.threadMonitor and not self.threadMonitor.is_alive():
-
             _LOGGER.warning("Status monitoring thread has terminated - restarting.")
-
-            # Restart the monitor thread
-            self.threadMonitor = threading.Thread(target=autelisapi.status_listener, args=(self.autelis.controllerAddr, self.set_node_state, _LOGGER))
-            self.threadMonitor.daemon = True
-            self.threadMonitor.start()
+            self._monitor_thread()
 
     # called every short_poll seconds
     def shortPoll(self):
@@ -290,16 +309,16 @@ class Controller(polyinterface.Controller):
 
         if statusXML is None:
             _LOGGER.error("No status XML returned from Autelis device on startup.")
-            sys.exit("Failure on intial communications with Autelis device.")   
+            sys.exit("Failure on intial communications with Autelis device.")
 
         else:
 
             # Get the temp units and update the controller node if needed
             temp = statusXML.find("temp")
             tempUnit = temp.find("tempunits").text
-            if tempUnit != self.currentTempUnit: # If not "F"              
+            if tempUnit != self.currentTempUnit: # If not "F"
                 self.set_temp_unit(tempUnit)
- 
+
             # Iterate equipment child elements and process each
             equipment = statusXML.find("equipment")
             for element in list(equipment):
@@ -324,11 +343,15 @@ class Controller(polyinterface.Controller):
                         # Create the EQUIPMENT node
                         equipNode = Equipment(self, self.address, addr, addr)
                         self.addNode(equipNode)
-                        
+
     # Creates or updates the state values of all nodes from the autelis interface
     def update_node_states(self, report=True):
 
         # get the status XML from the autelis device
+        if self.autelis is None:
+            _LOGGER.warning("update_node_states: Autelis API hasn't started up yet?")
+            return
+
         statusXML = self.autelis.get_status()
 
         if statusXML is None:
@@ -343,7 +366,7 @@ class Controller(polyinterface.Controller):
             temp = statusXML.find("temp")
 
             # Check for change in temp units on device
-            # Note: Should be picked up in TCP connection monitoring but just in case 
+            # Note: Should be picked up in TCP connection monitoring but just in case
             tempUnit = temp.find("tempunits").text
             if tempUnit != self.currentTempUnit:
                 self.change_temp_units(tempUnit)
@@ -469,6 +492,10 @@ class Controller(polyinterface.Controller):
 
         return retVal
 
+    def update_profile(self,command):
+        _LOGGER.info('update_profile:')
+        return self.poly.installprofile()
+
     drivers = [
         {"driver": "ST", "value": 0, "uom": _ISY_BOOL_UOM},
         {"driver": "GV0", "value": 0, "uom": _ISY_INDEX_UOM},
@@ -477,7 +504,10 @@ class Controller(polyinterface.Controller):
         {"driver": "BATLVL", "value": 0, "uom": _ISY_VOLT_UOM},
         {"driver": "CLITEMP", "value": 0, "uom": _ISY_TEMP_F_UOM}
     ]
-    commands = {"QUERY": query}
+    commands = {
+        'QUERY': query,
+        'UPDATE_PROFILE': update_profile,
+    }
 
 # Main function to establish Polyglot connection
 if __name__ == "__main__":
