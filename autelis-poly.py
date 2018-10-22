@@ -240,8 +240,8 @@ class Controller(polyinterface.Controller):
             self.update_profile(None) # Always upload for now
             self.update = False
 
-        # setup a thread for the api in case it times out we don't start it here.
-        # Needed for threads
+        # setup a thread for the api. We start a thread in case it takes a long
+        # time to connect which polyglot doesn't like the start to take to long
         self._logger.info("Starting Autelis api thread...")
         self.threadAPI = threading.Thread(target=self._api_start)
         self.threadAPI.daemon = True
