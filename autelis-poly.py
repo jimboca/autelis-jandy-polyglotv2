@@ -408,6 +408,7 @@ class Controller(polyinterface.Controller):
             airtemp = int(temp.find("airtemp").text)
 
             # Update the controller node drivers
+            self.setDriver('ST', 1)
             self.setDriver("GV0", runstate, report)
             self.setDriver("GV1", opmode, report)
             self.setDriver("GV2", lowbat, report)
