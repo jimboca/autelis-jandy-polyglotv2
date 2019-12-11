@@ -213,6 +213,7 @@ class Controller(polyinterface.Controller):
     def start(self):
 
         _LOGGER.info("Starting Autelis Nodeserver...")
+        self.heartbeat()
 
         # get controller information from custom parameters
         try:
