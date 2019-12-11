@@ -176,9 +176,7 @@ class Controller(polyinterface.Controller):
         self.name = "controller"
         self._logger = _LOGGER
         self.autelis = None
-        self.pollingInterval = 60
         self.ignoresolar = False
-        self.lastPoll = 0
         self.currentTempUnit = "F"
         self.threadMonitor = None
         self.update = True
@@ -226,11 +224,6 @@ class Controller(polyinterface.Controller):
             _LOGGER.error("Missing controller settings in configuration.")
             raise
 
-        # get polling intervals and configuration settings from custom parameters
-        try:
-            self.pollingInterval = int(customParams["pollinginterval"])
-        except (KeyError, ValueError):
-            self.pollingInterval = 60
         try:
             self.ignoresolar = bool(customParams["ignoresolar"])
         except (KeyError, ValueError):
@@ -312,13 +305,9 @@ class Controller(polyinterface.Controller):
 
         currentTime = time.time()
 
-        # check for elapsed polling interval
-        if (currentTime - self.lastPoll) >= self.pollingInterval:
-
-            # update the node states
-            _LOGGER.debug("Updating node states in AuteliseNodeServer.shortPoll()...")
-            self.update_node_states(True) # Update node states
-            self.lastPoll = currentTime
+        # update the node states
+        _LOGGER.debug("Updating node states in AuteliseNodeServer.shortPoll()...")
+        self.update_node_states(True) # Update node states
 
     # Override query to report driver values and child driver values
     def query(self):

@@ -160,13 +160,16 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
     # Loop continuously and Listen for status messages over TCP connection
     while True:
 
+        # Check if conn is Open
+
         # Get next status message
         try:
-            conn.settimeout(600) # If no messages in 10 minutes, then check connection
+            logger.debug('status_listener: listening...')
+            conn.settimeout(900) # If no messages in 15 minutes, then check connection
             msg = conn.recv(_BUFFER_SIZE)
 
         except socket.timeout:
-
+            logger.error("status_listener: Connection timed out, sending test message...")
             # Check connection
             try:
                 conn.settimeout(2)
@@ -195,12 +198,13 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
             conn.close()
             return False
         except:
+            logger.error("status_listener: Unknown exception.. closing up...")
             conn.close()
             raise
 
         # If msg is not empty, process status request
         if len(msg) > 0:
-
+            logger.debug("status_listener: Got msg: {}".format(msg))
             # See if the status update message matches our regex pattern
             matches = re.match(_STATUS_UPDATE_MATCH_PATTERN, msg.decode("utf-8"))
             if matches:
@@ -218,6 +222,9 @@ def status_listener(controllerAddr, statusUpdateCallback=None, logger=None):
 
             else:
                 logger.warning("status_listener: Invalid status message received from Pool Controller - %s", msg.decode("utf-8"))
+        else:
+            logger.debug("status_listener: Got empty msg? ({})".format(conn.fileno()))
+            raise # End for now since this puts us in an infinite loop
 
 # Convert the TCP Serial Port Interface command words to
 # element tags matching the HTTP Command Interface
